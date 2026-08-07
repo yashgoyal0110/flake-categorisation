@@ -23,7 +23,10 @@ RULES: list[tuple[Category, float, str, str, tuple[str, ...]]] = [
         "the runner ran out of a resource",
         "Check disk and memory headroom on the runner, and whether the job leaks containers.",
         ("no space left on device", "cannot allocate memory", "out of memory", "oom-killed",
-         "too many open files", "no such file or directory: /proc", "inotify"),
+         "too many open files", "no such file or directory: /proc", "inotify",
+         # A port still held by a previous test is exhaustion of a shared resource, and the fix
+         # is the same shape: find what is leaking, not retry harder.
+         "address already in use", "bind: cannot assign requested address"),
     ),
     (
         Category.NETWORK, 0.8,
@@ -31,7 +34,9 @@ RULES: list[tuple[Category, float, str, str, tuple[str, ...]]] = [
         "Usually the registry or a package mirror. Worth a retry with backoff around the pull.",
         ("connection reset by peer", "connection refused", "i/o timeout", "no route to host",
          "temporary failure in name resolution", "tls handshake timeout", "dial tcp",
-         "could not resolve host", "502 bad gateway", "503 service unavailable"),
+         "could not resolve host", "502 bad gateway", "503 service unavailable",
+         # dnf and curl inside a build phrase their timeouts differently to Go's net package.
+         "curl error (28)", "timeout was reached", "failed to download metadata"),
     ),
     (
         Category.INFRA, 0.75,

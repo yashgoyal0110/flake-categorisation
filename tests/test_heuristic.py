@@ -51,3 +51,20 @@ def test_resource_beats_network_when_both_appear():
     verdict = HeuristicClassifier().classify(
         flake("no space left on device\nconnection refused"))
     assert verdict.category is Category.RESOURCE
+
+
+def test_a_held_port_counts_as_a_resource_problem():
+    # Found by running the sample set: a port left behind by a previous test was falling through
+    # to unknown. It is exhaustion of a shared resource, and the fix is to find the leak.
+    verdict = HeuristicClassifier().classify(
+        flake("listen tcp4 :8080: bind: address already in use"))
+    assert verdict.category is Category.RESOURCE
+
+
+def test_a_dnf_timeout_inside_a_build_is_a_network_problem():
+    # dnf and curl phrase timeouts differently to Go's net package, so the Go-shaped patterns
+    # missed them entirely.
+    verdict = HeuristicClassifier().classify(
+        flake('error building at STEP "RUN dnf -y install golang": Curl error (28): '
+              "Timeout was reached"))
+    assert verdict.category is Category.NETWORK
