@@ -1,0 +1,140 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>flaketriage</title>
+<style>
+  :root {
+    --bg: #ffffff; --fg: #16181d; --muted: #626a75; --line: #e2e5ea; --panel: #f7f8fa;
+    --infra: #8b6f2e; --network: #1f6a8c; --timing: #7a4a9c; --resource: #a34a2a;
+    --environment: #2f7048; --real: #b3261e; --unknown: #6b7280;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #14161a; --fg: #e8eaed; --muted: #9aa2ad; --line: #2a2e36; --panel: #1b1e24;
+      --infra: #d8b45a; --network: #6fc3e8; --timing: #c39ae8; --resource: #ee9470;
+      --environment: #74c99a; --real: #f2827a; --unknown: #9aa2ad;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 28px 20px 60px; background: var(--bg); color: var(--fg);
+    font: 14px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1080px; margin: 0 auto; }
+  h1 { font-size: 20px; margin: 0 0 2px; }
+  .sub { color: var(--muted); margin: 0 0 22px; font-size: 13px; }
+  .tiles { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 22px; }
+  .tile {
+    border: 1px solid var(--line); border-radius: 8px; padding: 9px 13px; background: var(--panel);
+    cursor: pointer; user-select: none;
+  }
+  .tile[aria-pressed="true"] { border-color: currentColor; }
+  .tile .n { font-size: 19px; font-weight: 650; display: block; line-height: 1.1; }
+  .tile .k { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted); }
+  table { width: 100%; border-collapse: collapse; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line);
+           vertical-align: top; }
+  th { font-size: 11px; text-transform: uppercase; letter-spacing: .5px; color: var(--muted);
+       font-weight: 600; }
+  tbody tr { cursor: pointer; }
+  tbody tr:hover { background: var(--panel); }
+  .pill {
+    display: inline-block; font-size: 11px; font-weight: 650; padding: 2px 8px;
+    border-radius: 999px; border: 1px solid currentColor;
+  }
+  .job { font-family: ui-monospace, Menlo, Consolas, monospace; font-size: 12.5px; }
+  .dim { color: var(--muted); font-size: 12px; }
+  .conf { font-variant-numeric: tabular-nums; color: var(--muted); }
+  details { margin: 0; }
+  pre {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 6px;
+    padding: 10px; overflow-x: auto; font-size: 12px; margin: 8px 0 0; white-space: pre-wrap;
+  }
+  .note {
+    border: 1px solid var(--line); border-left: 3px solid var(--muted); background: var(--panel);
+    padding: 8px 12px; border-radius: 4px; margin-bottom: 18px; font-size: 12.5px;
+    color: var(--muted);
+  }
+  a { color: inherit; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>flaketriage</h1>
+  <p class="sub">GitHub Actions failures that look like flakes, and why.</p>
+
+  <div class="note" id="note">Loading.</div>
+  <div class="tiles" id="tiles"></div>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Category</th><th>Job</th><th>What happened</th><th>Conf.</th><th>Detected by</th>
+      </tr>
+    </thead>
+    <tbody id="rows"></tbody>
+  </table>
+</div>
+
+<script>
+const COLOURS = ["infra","network","timing","resource","environment","real","unknown"];
+let all = [], active = null;
+
+function colour(c) { return COLOURS.includes(c) ? `var(--${c})` : "var(--unknown)"; }
+
+function dims(d) {
+  return ["distro","priv","mode"].map(k => d[k]).filter(Boolean).join(" · ");
+}
+
+function render() {
+  const shown = active ? all.filter(f => (f.category || "unclassified") === active) : all;
+  document.getElementById("rows").innerHTML = shown.map(f => {
+    const c = f.category || "unclassified";
+    const conf = f.confidence == null ? "" : Math.round(f.confidence * 100) + "%";
+    return `<tr>
+      <td><span class="pill" style="color:${colour(c)}">${c}</span></td>
+      <td><span class="job">${f.job_name}</span><br><span class="dim">${dims(f.dimensions)}</span></td>
+      <td>
+        ${f.summary || "<span class='dim'>not categorised</span>"}
+        ${f.suggestion ? `<br><span class="dim">→ ${f.suggestion}</span>` : ""}
+        <details><summary class="dim">log excerpt</summary><pre>${escapeHtml(f.excerpt || "(none)")}</pre></details>
+      </td>
+      <td class="conf">${conf}</td>
+      <td class="dim">${f.detected_by}<br><a href="${f.html_url}">run</a></td>
+    </tr>`;
+  }).join("") || `<tr><td colspan="5" class="dim">Nothing here.</td></tr>`;
+}
+
+function escapeHtml(s) {
+  return s.replace(/[&<>]/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[m]));
+}
+
+fetch("/api/flakes").then(r => r.json()).then(data => {
+  all = data.flakes;
+  const counts = data.counts;
+  const total = all.length;
+
+  document.getElementById("note").textContent = total === 0
+    ? "No flakes recorded yet. Run: flaketriage demo, or flaketriage ingest <owner/repo>."
+    : `${total} flaky failures across ${Object.keys(data.groups).length} signatures. Click a category to filter.`;
+
+  document.getElementById("tiles").innerHTML = Object.entries(counts).map(([k, n]) =>
+    `<button class="tile" data-c="${k}" aria-pressed="false" style="color:${colour(k)}">
+       <span class="n">${n}</span><span class="k">${k}</span>
+     </button>`).join("");
+
+  document.querySelectorAll(".tile").forEach(tile => tile.addEventListener("click", () => {
+    const c = tile.dataset.c;
+    active = active === c ? null : c;
+    document.querySelectorAll(".tile").forEach(t =>
+      t.setAttribute("aria-pressed", String(t.dataset.c === active)));
+    render();
+  }));
+
+  render();
+});
+</script>
+</body>
+</html>
