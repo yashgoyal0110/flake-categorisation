@@ -1,0 +1,41 @@
+name: ci
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ["3.11", "3.12", "3.13"]
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python }}
+      - run: pip install -e ".[dev]"
+      # The suite never touches the network. GitHub and the model are both injected, so this runs
+      # the same on a laptop with no token as it does here.
+      - run: pytest -q
+
+  smoke:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - run: pip install -e .
+      # End to end on the sample data, with no key and no network, so a broken CLI or a broken
+      # report template fails here rather than in front of somebody trying the tool.
+      - run: |
+          flaketriage --db /tmp/ci.db demo
+          flaketriage --db /tmp/ci.db report | tee /tmp/report.md
+          grep -q "flaky job failures" /tmp/report.md
