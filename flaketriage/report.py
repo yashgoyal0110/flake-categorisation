@@ -30,7 +30,9 @@ def group(flakes: Iterable[Flake]) -> dict[str, list[Flake]]:
     grouped: dict[str, list[Flake]] = defaultdict(list)
     for flake in flakes:
         grouped[signature(flake)].append(flake)
-    return dict(sorted(grouped.items(), key=lambda kv: len(kv[1]), reverse=True))
+    # Count descending, then signature, so the same data always renders the same report.
+    # Without the tie-break, dict ordering makes two identical windows produce diffs.
+    return dict(sorted(grouped.items(), key=lambda kv: (-len(kv[1]), kv[0])))
 
 
 def _dimension_note(flakes: list[Flake]) -> str:

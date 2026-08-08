@@ -75,3 +75,10 @@ def test_issue_title_mentions_the_pattern():
 def test_unclassified_flakes_still_group():
     f = flake(1, category=None)
     assert signature(f) == "unclassified:int"
+
+
+def test_group_order_is_stable_for_equal_counts():
+    # Two runs over the same window should produce byte-identical reports, otherwise a scheduled
+    # job that commits the digest generates noise diffs.
+    flakes = [flake(1, "sys local root fedora-current"), flake(2, "apiv2 local root fedora-current")]
+    assert list(group(flakes)) == list(group(list(reversed(flakes))))
