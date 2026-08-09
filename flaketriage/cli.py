@@ -37,6 +37,8 @@ def main(argv: list[str] | None = None) -> int:
 
     p_serve = sub.add_parser("serve", help="run the dashboard")
     p_serve.add_argument("--port", type=int, default=8000)
+    p_serve.add_argument("--host", default="127.0.0.1",
+                         help="0.0.0.0 to listen outside the container")
 
     args = parser.parse_args(argv)
     store = Store(args.db)
@@ -74,7 +76,7 @@ def main(argv: list[str] | None = None) -> int:
 
     if args.command == "serve":
         from .web import serve
-        serve(store, port=args.port)
+        serve(store, port=args.port, host=args.host)
         return 0
 
     return 1

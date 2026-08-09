@@ -69,9 +69,11 @@ def make_handler(store: Store):
     return Handler
 
 
-def serve(store: Store, port: int = 8000) -> None:
-    server = ThreadingHTTPServer(("127.0.0.1", port), make_handler(store))
-    print(f"dashboard on http://127.0.0.1:{port}  (ctrl-c to stop)")
+def serve(store: Store, port: int = 8000, host: str = "127.0.0.1") -> None:
+    """Localhost by default. Containers need 0.0.0.0, which is opt-in rather than the default
+    because the dashboard has no authentication and should sit behind a reverse proxy."""
+    server = ThreadingHTTPServer((host, port), make_handler(store))
+    print(f"dashboard on http://{host}:{port}  (ctrl-c to stop)")
     try:
         server.serve_forever()
     except KeyboardInterrupt:

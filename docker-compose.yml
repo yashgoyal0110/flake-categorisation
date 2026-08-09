@@ -1,0 +1,19 @@
+services:
+  flaketriage:
+    build: .
+    container_name: flaketriage
+    restart: unless-stopped
+    environment:
+      # Without a token it falls back to the sample data, so the dashboard is never empty.
+      GITHUB_TOKEN: ${GITHUB_TOKEN:-}
+      FLAKE_REPO: ${FLAKE_REPO:-containers/podman}
+      FLAKE_RUNS: ${FLAKE_RUNS:-40}
+      FLAKE_INTERVAL: ${FLAKE_INTERVAL:-3600}
+    volumes:
+      - flake-data:/data
+    # Bound to localhost. Caddy is what faces the internet.
+    ports:
+      - "127.0.0.1:8123:8000"
+
+volumes:
+  flake-data:

@@ -72,6 +72,33 @@ matrix axes are available before anything reads a log line. That is why the repo
 
 "Always rootless on rawhide" is usually the whole diagnosis. "12 flakes" is not.
 
+## Deploy it
+
+```
+docker compose up -d --build          # http://127.0.0.1:8123
+```
+
+With no `GITHUB_TOKEN` it loads the sample data, so the dashboard is never empty. With one, it
+ingests real runs on start and every hour after:
+
+```
+echo "GITHUB_TOKEN=ghp_..." > .env
+echo "FLAKE_REPO=containers/podman" >> .env
+docker compose up -d --build
+```
+
+The container binds to localhost only. Put a reverse proxy in front of it, because the dashboard
+is read-only but has no authentication:
+
+```
+flakes.example.com {
+    reverse_proxy 127.0.0.1:8123
+}
+```
+
+The database is on a named volume, so a redeploy keeps the flake history, which is the one thing
+here that gets more useful the longer it runs.
+
 ## Not here
 
 Correlating the same failing test across unrelated pull requests, which would catch the most and
