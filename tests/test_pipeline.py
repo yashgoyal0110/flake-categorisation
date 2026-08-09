@@ -95,3 +95,26 @@ def test_classify_pending_is_resumable(tmp_path):
     assert classify_pending(store, HeuristicClassifier()) == 1
     assert classify_pending(store, HeuristicClassifier()) == 0, "already done, nothing to redo"
     assert store.all()[0].verdict.category.value == "resource"
+
+
+def test_auth_survives_an_api_redirect_but_not_a_storage_one():
+    """GitHub 302s job logs to signed blob storage.
+
+    urllib's own redirect handling forwards the Authorization header, and the storage backend
+    answers 401 InvalidAuthenticationInfo, so every excerpt comes back empty and every flake is
+    filed as unknown. curl -L drops auth across hosts, which is why the same request worked from a
+    shell and not from Python. Only turned up against the live repository.
+    """
+    from flaketriage.github import onward_headers
+
+    headers = {"Authorization": "Bearer secret", "User-Agent": "flaketriage"}
+
+    # A renamed repository 301s within the API, and the retry must stay authenticated.
+    kept = onward_headers("https://api.github.com/repos/new-org/podman/actions/runs", headers)
+    assert kept["Authorization"] == "Bearer secret"
+
+    # A log 302s to signed storage, where our token is not only useless but fatal.
+    dropped = onward_headers(
+        "https://productionresultssa0.blob.core.windows.net/actions-results/x?sig=abc", headers)
+    assert "Authorization" not in dropped
+    assert dropped["User-Agent"] == "flaketriage"

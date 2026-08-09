@@ -21,7 +21,7 @@ from __future__ import annotations
 
 from collections import defaultdict
 
-from .models import Flake, Job
+from .models import Flake, Job, is_gate_job
 
 RERUN_PASSED = "rerun-passed"
 SAME_SHA_PASSED = "same-sha-passed"
@@ -29,6 +29,9 @@ SAME_SHA_PASSED = "same-sha-passed"
 
 def find_flakes(jobs: list[Job]) -> list[Flake]:
     """Given every job across every attempt, return the failures that look like flakes."""
+    # Aggregate gate jobs fail because something they depend on failed. Keeping them means every
+    # real flake is counted twice, once under a name that says nothing about what broke.
+    jobs = [j for j in jobs if not is_gate_job(j.name)]
     flakes: dict[int, Flake] = {}
 
     for job in _rerun_passed(jobs):

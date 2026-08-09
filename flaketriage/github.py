@@ -24,13 +24,64 @@ API = "https://api.github.com"
 Fetch = Callable[[str, dict[str, str]], tuple[int, dict[str, str], bytes]]
 
 
-def _urlopen(url: str, headers: dict[str, str]) -> tuple[int, dict[str, str], bytes]:
+API_HOST = "api.github.com"
+
+
+class _NoRedirect(urllib.request.HTTPRedirectHandler):
+    """Stops urllib following redirects on its own so we can decide what to send onwards."""
+
+    def redirect_request(self, req, fp, code, msg, headers, newurl):
+        return None
+
+
+_OPENER = urllib.request.build_opener(_NoRedirect)
+
+
+def _urlopen(url: str, headers: dict[str, str], _depth: int = 0
+             ) -> tuple[int, dict[str, str], bytes]:
+    """GET, following redirects by hand.
+
+    Two redirects matter here and urllib gets one of them wrong.
+
+    A job log 302s to signed blob storage, and urllib's own redirect handling forwards the
+    Authorization header to it. The storage backend rejects a bearer token it did not issue with
+    401 InvalidAuthenticationInfo, so every log fetch comes back empty and every flake ends up
+    uncategorised. The signature in the redirect URL is the credential, so the header has to be
+    dropped when the host changes. curl -L does this by default, which is why the same request
+    works from a shell and not from Python.
+
+    A repository that has been renamed 301s within api.github.com, and there the header must be
+    kept or the retry is unauthenticated.
+    """
     request = urllib.request.Request(url, headers=headers)
     try:
-        with urllib.request.urlopen(request, timeout=30) as response:
-            return response.status, dict(response.headers), response.read()
+        with _OPENER.open(request, timeout=60) as response:
+            status, response_headers, body = (
+                response.status, dict(response.headers), response.read())
     except urllib.error.HTTPError as exc:
-        return exc.code, dict(exc.headers or {}), exc.read()
+        status, response_headers, body = exc.code, dict(exc.headers or {}), exc.read()
+
+    if status in (301, 302, 303, 307, 308) and _depth < 5:
+        location = response_headers.get("Location")
+        if not location:
+            return status, response_headers, body
+        target = urllib.parse.urljoin(url, location)
+        return _urlopen(target, onward_headers(target, headers), _depth + 1)
+
+    return status, response_headers, body
+
+
+def onward_headers(target: str, headers: dict[str, str]) -> dict[str, str]:
+    """Which headers survive a redirect.
+
+    Everything if we are still on api.github.com, because a renamed repository 301s within the API
+    and the retry has to stay authenticated. Nothing but the user agent otherwise, because the
+    signature embedded in a blob storage URL is the credential and a bearer token it did not issue
+    gets the whole request rejected.
+    """
+    if urllib.parse.urlparse(target).hostname == API_HOST:
+        return headers
+    return {"User-Agent": headers.get("User-Agent", "flaketriage")}
 
 
 class GitHub:

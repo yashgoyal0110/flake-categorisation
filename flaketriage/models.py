@@ -29,6 +29,36 @@ class Category(StrEnum):
         return self not in (Category.REAL, Category.UNKNOWN)
 
 
+# Jobs that come from a reusable workflow are named "<job name> / <workflow>", so the suffix has
+# to come off before the matrix axes can be read.
+REUSABLE_SUFFIX = " / "
+
+# Aggregate gate jobs restate the result of everything they depend on. Counting them means every
+# real flake is also counted a second time under a name that carries no diagnostic information.
+GATE_JOBS = frozenset({"total success", "success", "all tests"})
+
+
+def parse_dimensions(job_name: str) -> dict[str, str]:
+    """Pull the matrix axes out of a job name.
+
+    Podman names these "<test> <mode> <priv> <distro>", and uploads logs under the same shape, so
+    the axes are available before anything reads a log line. Returns nothing for jobs that are not
+    matrix jobs, rather than slicing whatever words happen to be in the name.
+    """
+    name = job_name.split(REUSABLE_SUFFIX)[0].strip()
+    if is_gate_job(name):
+        return {}
+    parts = name.split()
+    if not parts:
+        return {}
+    keys = ("test", "mode", "priv", "distro")
+    return {k: v for k, v in zip(keys, parts) if v}
+
+
+def is_gate_job(job_name: str) -> bool:
+    return job_name.split(REUSABLE_SUFFIX)[0].strip().lower() in GATE_JOBS
+
+
 @dataclass(frozen=True)
 class Job:
     """One job inside one attempt of one workflow run."""
@@ -57,9 +87,7 @@ class Job:
         "only fails rootless on rawhide" is often the entire diagnosis, and it is available before
         anything reads a single line of output.
         """
-        parts = self.name.split()
-        keys = ("test", "mode", "priv", "distro")
-        return {k: v for k, v in zip(keys, parts) if v}
+        return parse_dimensions(self.name)
 
 
 @dataclass
@@ -79,9 +107,7 @@ class Flake:
 
     @property
     def dimensions(self) -> dict[str, str]:
-        parts = self.job_name.split()
-        keys = ("test", "mode", "priv", "distro")
-        return {k: v for k, v in zip(keys, parts) if v}
+        return parse_dimensions(self.job_name)
 
 
 @dataclass

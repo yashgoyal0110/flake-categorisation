@@ -95,3 +95,25 @@ def test_dimensions_survive_onto_the_flake():
     assert find_flakes(jobs)[0].dimensions == {
         "test": "sys", "mode": "remote", "priv": "rootless", "distro": "fedora-rawhide",
     }
+
+
+def test_reusable_workflow_suffix_is_stripped():
+    # Real Podman jobs come through a reusable workflow, so GitHub names them
+    # "<job> / <workflow>". Found this only after pointing it at the live repo.
+    j = job(1, name="sys local rootless fedora-current / lima")
+    assert j.dimensions == {
+        "test": "sys", "mode": "local", "priv": "rootless", "distro": "fedora-current",
+    }
+
+
+def test_aggregate_gate_jobs_are_not_counted():
+    # "Total Success" is the needs-gate. It goes red because something it depends on went red, so
+    # counting it means every flake appears twice, the second time under a name that says nothing.
+    jobs = [
+        job(1, run=10, attempt=1, name="Total Success", conclusion="failure"),
+        job(2, run=10, attempt=2, name="Total Success", conclusion="success"),
+        job(3, run=10, attempt=1, name="int local root fedora-current", conclusion="failure"),
+        job(4, run=10, attempt=2, name="int local root fedora-current", conclusion="success"),
+    ]
+    flakes = find_flakes(jobs)
+    assert [f.job_id for f in flakes] == [3]
