@@ -7,6 +7,11 @@ dist/
 
 *.db
 *.sqlite3
+
+# Holds GITHUB_TOKEN when self-hosting. Never commit it.
+.env
+.env.*
+!.env.example
 .pytest_cache/
 .DS_Store
 .idea/
