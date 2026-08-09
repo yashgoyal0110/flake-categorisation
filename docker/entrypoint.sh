@@ -25,9 +25,13 @@ refresh() {
     echo "classify failed, flakes are stored and can be classified later"
 }
 
-refresh
-
+# Refresh in the background from the very first pass, including the initial one.
+#
+# Doing the first ingest in the foreground meant the dashboard was down for the whole of it, which
+# on a hundred runs is several minutes of 502 on every redeploy. The database persists on a
+# volume, so on a restart there is already something to show while the refresh catches up.
 (
+  refresh
   while true; do
     sleep "$INTERVAL"
     refresh
