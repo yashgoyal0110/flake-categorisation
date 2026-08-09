@@ -42,7 +42,9 @@ RULES: list[tuple[Category, float, str, str, tuple[str, ...]]] = [
         "Infrastructure rather than code. Re-run is the right response.",
         ("the runner has received a shutdown signal", "the operation was canceled",
          "failed to pull image", "manifest unknown", "error response from daemon",
-         "systemd", "dbus", "cgroup"),
+         "systemd", "dbus", "cgroup",
+         # Seen on real rootless jobs: a transient unit start failure inside the test VM.
+         "dependency failed for", "start job for unit", "/start failed"),
     ),
     (
         Category.TIMING, 0.7,

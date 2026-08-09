@@ -19,17 +19,30 @@ ANSI = re.compile(r"\x1b\[[0-9;]*[a-zA-Z]")
 # GitHub prefixes every line of an API-fetched log with an ISO timestamp.
 TIMESTAMP = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d+Z\s?")
 
-# Ordered by how much they usually mean. The last match wins, because a job that fails, retries
-# something, and fails again should be read at its final failure.
-FAILURE_MARKERS = (
-    "##[error]",
+# Two tiers, and the distinction matters more than it looks.
+#
+# Tier one says what failed. Tier two only says that something did: GitHub appends
+# "##[error]Process completed with exit code 2" at the very end of a failed job, after the
+# post-steps have run, so anchoring on it lands the excerpt in artifact-upload boilerplate and the
+# actual test failure is a thousand lines further up. Found that against real Podman logs, where
+# every excerpt came back full of "Finished uploading artifact content to blob storage".
+#
+# So: use tier two only when no tier-one marker exists anywhere in the log.
+TEST_MARKERS = (
     "Summarizing ",          # Ginkgo's end-of-run failure summary
     "[FAILED]",
     "FAIL!",
     "--- FAIL",              # go test
     "not ok ",               # BATS
+    "panic:",
+)
+
+JOB_MARKERS = (
+    "##[error]",
     "Error: ",
 )
+
+FAILURE_MARKERS = TEST_MARKERS + JOB_MARKERS
 
 DEFAULT_CONTEXT_LINES = 60
 DEFAULT_MAX_CHARS = 6000
@@ -72,9 +85,11 @@ def reduce_log(
 
 
 def _last_marker_index(lines: list[str]) -> int | None:
-    for i in range(len(lines) - 1, -1, -1):
-        if any(marker in lines[i] for marker in FAILURE_MARKERS):
-            return i
+    """Last line carrying the most informative kind of marker present."""
+    for markers in (TEST_MARKERS, JOB_MARKERS):
+        for i in range(len(lines) - 1, -1, -1):
+            if any(marker in lines[i] for marker in markers):
+                return i
     return None
 
 

@@ -52,3 +52,24 @@ def test_signal_lines_are_deduplicated():
         "[FAILED] Expected success",
     ])
     assert signal_lines(excerpt) == ["Error: pull failed", "[FAILED] Expected success"]
+
+
+def test_a_test_failure_beats_the_job_level_error():
+    # GitHub appends "##[error]Process completed with exit code N" after the post-steps, so it is
+    # always the last marker and always the least useful one. Anchoring there put every real
+    # Podman excerpt inside artifact-upload boilerplate.
+    raw = "\n".join([
+        *[f"setup {i}" for i in range(80)],
+        "not ok 42 |450| podman volume export should fail",
+        *[f"Uploading artifact chunk {i}" for i in range(80)],
+        "##[error]Process completed with exit code 2.",
+    ])
+    out = reduce_log(raw, context_lines=20)
+    assert "not ok 42" in out
+    assert "Uploading artifact chunk 79" not in out
+
+
+def test_the_job_level_error_is_still_used_when_nothing_better_exists():
+    raw = "\n".join([*[f"line {i}" for i in range(50)],
+                     "##[error]Process completed with exit code 1."])
+    assert "##[error]" in reduce_log(raw, context_lines=10)
