@@ -42,29 +42,44 @@ def make_handler(store: Store):
         def log_message(self, *args):  # quieter than the default
             pass
 
-        def _send(self, status: int, body: bytes, content_type: str) -> None:
+        def _send(self, status: int, body: bytes, content_type: str,
+                  head_only: bool = False) -> None:
             self.send_response(status)
             self.send_header("Content-Type", content_type)
             self.send_header("Content-Length", str(len(body)))
             self.end_headers()
-            self.wfile.write(body)
+            if not head_only:
+                self.wfile.write(body)
+
+        def do_HEAD(self) -> None:
+            """Same status and headers as GET, no body.
+
+            BaseHTTPRequestHandler answers 501 for anything it has no method for, so without this
+            every uptime check and reverse-proxy probe reports the site as broken while it is
+            serving GETs perfectly well.
+            """
+            self._respond(self.path, head_only=True)
 
         def do_GET(self) -> None:
-            if self.path in ("/", "/index.html"):
-                self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8")
-            elif self.path == "/api/flakes":
+            self._respond(self.path, head_only=False)
+
+        def _respond(self, path: str, head_only: bool) -> None:
+            if path in ("/", "/index.html"):
+                self._send(200, (STATIC / "index.html").read_bytes(), "text/html; charset=utf-8",
+                           head_only)
+            elif path == "/api/flakes":
                 flakes = store.all()
                 payload = {
                     "flakes": [_flake_json(f) for f in flakes],
                     "counts": store.count_by_category(),
                     "groups": {sig: len(items) for sig, items in group(flakes).items()},
                 }
-                self._send(200, json.dumps(payload).encode(), "application/json")
-            elif self.path == "/api/report":
+                self._send(200, json.dumps(payload).encode(), "application/json", head_only)
+            elif path == "/api/report":
                 body = weekly_digest(store.all())
-                self._send(200, body.encode(), "text/plain; charset=utf-8")
+                self._send(200, body.encode(), "text/plain; charset=utf-8", head_only)
             else:
-                self._send(404, b"not found", "text/plain")
+                self._send(404, b"not found", "text/plain", head_only)
 
     return Handler
 
