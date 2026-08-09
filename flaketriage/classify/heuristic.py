@@ -11,8 +11,6 @@ wrong, not how often it answers.
 
 from __future__ import annotations
 
-import re
-
 from ..logs import signal_lines
 from ..models import Category, Flake, Verdict
 
@@ -61,8 +59,6 @@ REAL_MARKERS = (
     "cannot use ", "undefined:", "syntax error", "build failed",
     "expected 0 to equal", "expected error to be nil",
 )
-
-WORD = re.compile(r"[a-z0-9._/-]+")
 
 
 class HeuristicClassifier:
